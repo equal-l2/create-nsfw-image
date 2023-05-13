@@ -1,3 +1,7 @@
+# この辺をモデル使って自動化してみたい
+# https://gamingchahan.com/ecchi/
+# https://kennycason.com/posts/2017-10-01-genetic-algorithm-draw-images-japanese.html
+
 from io import BytesIO
 from random import randint, random
 
@@ -15,7 +19,8 @@ IMG_SHAPE = (250, 200, 3)
 max_value = 0
 while True:
     # create image
-    # TODO: genetic algorithm
+    # TODO: 遺伝要素(現時点ではランダムだけ)
+    # TODO: 楕円も追加する?
     image = np.zeros(IMG_SHAPE, np.uint8)
     for _ in range(1000):
         x = randint(0, IMG_SHAPE[1])
@@ -35,6 +40,7 @@ while True:
         image[y : y + h, x : x + w] = sub_img
 
     # なんか一旦ファイルに落とさないとまともに動かないのでごまかす
+    # TODO: Issueが嘘を言ってないか、npのみとBytesIOで比較（既存ファイルで）
     # https://github.com/GantMan/nsfw_model/issues/89#issuecomment-770139533
     # https://stackoverflow.com/a/52865864
     success, cv2_buf = cv2.imencode(".png", image)
