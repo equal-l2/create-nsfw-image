@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "create-nsfw-image"
+version = "0.1.0"
+description = ""
+authors = ["equal-l2 <eng.equall2@gmail.com>"]
+readme = "README.md"
+packages = [{include = "create_nsfw_image"}]
+
+[tool.poetry.dependencies]
+python = ">=3.11, <3.12"
+nsfw-detector = {path = "./nsfw_model"}
+protobuf = "^3.20"
+opencv-python = "^4.7.0.72"
+tensorflow="^2.12.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
