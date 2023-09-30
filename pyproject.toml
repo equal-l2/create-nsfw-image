@@ -4,7 +4,6 @@ version = "0.1.0"
 description = ""
 authors = ["equal-l2 <eng.equall2@gmail.com>"]
 readme = "README.md"
-packages = [{include = "create_nsfw_image"}]
 
 [tool.poetry.dependencies]
 python = ">=3.11, <3.12"
