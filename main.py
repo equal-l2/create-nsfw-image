@@ -6,20 +6,44 @@ import heapq
 from dataclasses import dataclass
 from io import BytesIO
 from random import choice, randint, random, sample, uniform
-from typing import NewType, Self, TypeVar, cast
+from typing import NewType, Self, TypeAlias, TypeVar, cast
 
 import cv2
 import numpy as np
-import tensorflow as tf
-from nsfw_detector import predict
+from tensorflow import keras
+from tensorflow_hub import KerasLayer
 from numpy.typing import NDArray
 
-print("Loading model")
-model = predict.load_model("./model/mobilenet_v2_140_224")
-print("Ended: Loading model")
-
+KerasModel: TypeAlias = keras.Sequential
 ImgShape = NewType("ImgShape", tuple[int, int, int])
 Color = NewType("Color", tuple[int, int, int])
+
+IMG_SHAPE: ImgShape = ImgShape((250, 200, 3))
+GENES = 1000
+POOL = 50
+TOP_N = 5
+TO_NEXT = 5
+MUT_RATE = 0.5
+
+
+def classify_nd(model: KerasModel, nd_images) -> list[dict[str, float]]:
+    model_preds = model.predict(
+        nd_images,
+        verbose=0,  # プログレスバーを消す #type: ignore
+    )
+
+    categories = ["drawings", "hentai", "neutral", "porn", "sexy"]
+
+    def map_preds(single_preds) -> dict[str, float]:
+        single_probs: dict[str, float] = {}
+        for j, pred in enumerate(single_preds):
+            single_probs[categories[j]] = float(pred)
+        return single_probs
+
+    probs: list[dict[str, float]] = [
+        map_preds(single_preds) for single_preds in model_preds
+    ]
+    return probs
 
 
 @dataclass(kw_only=True)
@@ -66,7 +90,7 @@ class Gene:
                 Color,
                 tuple(
                     clamp(randint(*minmax_delta(p[0], p[1], delta)), 0, 255)
-                    for p in zip(a, b)
+                    for p in zip(a, b, strict=True)
                 ),
             )
 
@@ -108,6 +132,8 @@ class Picture:
 
     def render(self) -> NDArray[np.uint8]:
         # clear image
+        # TODO: benchmark between image.fill vs np.zeroes
+        # (reserve or not)
         self.image.fill(0)
 
         for gene in self.genes:
@@ -126,28 +152,26 @@ class Picture:
 
         return self.image
 
-    def predict(self) -> float:
+    def predict(self, model: KerasModel) -> float:
         # なんか一旦ファイルに落とさないとまともに動かないのでごまかす
         # TODO: Issueが嘘を言ってないか、npのみとBytesIOで比較（既存ファイルで）
         # https://github.com/GantMan/nsfw_model/issues/89#issuecomment-770139533
         # https://stackoverflow.com/a/52865864
         success, cv2_buf = cv2.imencode(".png", self.render())
+        if not success:
+            raise Exception("imencode failed")
         bytes_buf = BytesIO(cv2_buf)
 
         # モデルが食える形にしてやる
         # TODO: BytesIO使わなくてもいけるのでは……(リサイズと正規化できればいい気がする)
-        tf_img = tf.keras.preprocessing.image.load_img(
+        keras_img = keras.preprocessing.image.load_img(
             bytes_buf, target_size=(224, 224)
         )
-        tf_image = tf.keras.preprocessing.image.img_to_array(tf_img) / 255.0
+        keras_image = keras.preprocessing.image.img_to_array(keras_img) / 255.0
 
-        result = predict.classify_nd(
+        result = classify_nd(
             model,
-            np.asarray([tf_image]),
-            # プログレスバーを消す
-            predict_args={
-                "verbose": 0,
-            },
+            np.asarray([keras_image]),
         )
 
         return result[0]["hentai"]
@@ -166,25 +190,26 @@ class Picture:
         )
 
 
-IMG_SHAPE: ImgShape = ImgShape((250, 200, 3))
-GENES = 1000
-POOL = 50
-TOP_N = 5
-TO_NEXT = 5
-MUT_RATE = 0.5
-
-
 def breed(l: list[Picture], mut_rate: float) -> Picture:
     return l[0].crossbreed(l[1], mut_rate)
 
+
+print("Loading model")
+model = cast(
+    KerasModel,
+    keras.models.load_model(
+        "./model/model.keras", custom_objects={"KerasLayer": KerasLayer}
+    ),
+)
+print("Ended: Loading model")
 
 # init
 pool = [Picture.random(GENES, IMG_SHAPE) for _ in range(POOL)]
 
 for n in range(1000):
-    top = heapq.nlargest(TOP_N, pool, key=lambda x: x.predict())
+    top = heapq.nlargest(TOP_N, pool, key=lambda x: x.predict(model))
 
-    print(f"value: {top[0].predict()}")
+    print(f"value: {top[0].predict(model)}")
     if n % 100 == 0:
         cv2.imshow("Image", top[0].render())
         cv2.waitKey(0)

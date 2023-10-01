@@ -1,4 +1,0 @@
-[submodule "nsfw_model"]
-	path = nsfw_model
-	url = https://github.com/equal-l2/nsfw_model
-	branch = deps-hell
