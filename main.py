@@ -6,17 +6,17 @@ import heapq
 from dataclasses import dataclass
 from random import choice, randint, random, sample, uniform
 from typing import NewType, Self, TypeVar, cast
+from PIL import Image
+from time import perf_counter
 
 import cv2
 import numpy as np
-from numpy.typing import NDArray
 
-from nn import Model, classify_nd, load_model, to_pill_image
 
 ImgShape = NewType("ImgShape", tuple[int, int, int])
 Color = NewType("Color", tuple[int, int, int])
 
-IMG_SHAPE: ImgShape = ImgShape((250, 200, 3))
+IMG_SHAPE: ImgShape = ImgShape((500, 400, 3))
 GENES = 1000
 POOL = 50
 TOP_N = 5
@@ -96,23 +96,21 @@ class Gene:
 class Picture:
     genes: list[Gene]
     shape: ImgShape
-    image: NDArray[np.uint8]
 
     def __init__(self, genes: list[Gene], shape: ImgShape) -> None:
         self.genes = genes
         self.shape = shape
-        self.image = np.zeros(shape, np.uint8)
 
     @classmethod
     def random(cls, gene_count: int, shape: ImgShape) -> Self:
         genes = [Gene.random(shape) for _ in range(gene_count)]
         return Picture(genes, shape)
 
-    def render(self) -> NDArray[np.uint8]:
+    def render(self) -> Image.Image:
         # clear image
         # TODO: benchmark between image.fill vs np.zeroes
         # (reserve or not)
-        self.image.fill(0)
+        image = np.zeros(shape=self.shape, dtype=np.uint8)
 
         for gene in self.genes:
             x = gene.x
@@ -123,22 +121,12 @@ class Picture:
 
             # 重なった部分だけを上手いこと透過させたいのでクロップしてからweighted sum
             # https://stackoverflow.com/a/56472613
-            sub_img = self.image[y : y + h, x : x + w]
+            sub_img = image[y : y + h, x : x + w]
             opacity = gene.opacity
             cv2.addWeighted(sub_img, opacity, rect, 1 - opacity, 0, dst=sub_img)
-            self.image[y : y + h, x : x + w] = sub_img
+            image[y : y + h, x : x + w] = sub_img
 
-        return self.image
-
-    def predict(self, model: Model) -> float:
-        pill_image = to_pill_image(self.render())
-
-        result = classify_nd(
-            model,
-            np.asarray([pill_image]),
-        )
-
-        return result[0]["hentai"]
+        return Image.fromarray(image)
 
     def crossbreed(self, other: Self, mut_rate: float) -> Self:
         def breed(gs: tuple[Gene, Gene], mut_rate: float) -> Gene:
@@ -160,20 +148,34 @@ def breed(l: list[Picture], mut_rate: float) -> Picture:
 
 
 print("Loading model")
-model = load_model("./model/model.keras")
+
+from nn import classify
+
 print("Ended: Loading model")
 
 # init
 pool = [Picture.random(GENES, IMG_SHAPE) for _ in range(POOL)]
 
 for n in range(1000):
-    top = heapq.nlargest(TOP_N, pool, key=lambda x: x.predict(model))
+    start = perf_counter()
+    images = [v.render() for v in pool]
+    print(f"Render: {perf_counter() - start}")  # TODO: Too Slow!!! ( O(GENES) )
 
-    print(f"value: {top[0].predict(model)}")
-    if n % 100 == 0:
-        cv2.imshow("Image", top[0].render())
-        cv2.waitKey(0)
+    start = perf_counter()
+    scores = classify(images)
+    print(f"Classify: {perf_counter() - start}")  # O(POOL)
 
+    start = perf_counter()
+    raw_top = heapq.nlargest(TOP_N, enumerate(pool), key=lambda x: scores[x[0]])
+    top = [v[1] for v in raw_top]
+
+    print(f"value: {scores[raw_top[0][0]]}")
+
+    cv2_image = cv2.cvtColor(np.array(top[0].render()), cv2.COLOR_RGB2BGR)
+    cv2.imshow("main", cv2_image)
+    cv2.waitKey(delay=100)
+
+    start = perf_counter()
     pool = [
         breed(
             sample(population=top, k=2),
@@ -181,3 +183,4 @@ for n in range(1000):
         )
         for _ in range(POOL - TO_NEXT)
     ] + top[0:TO_NEXT]
+    print(f"Breed: {perf_counter() - start}")  # O(GENE)
