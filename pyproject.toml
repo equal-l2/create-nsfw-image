@@ -1,21 +1,9 @@
-[tool.poetry]
+[project]
 name = "create-nsfw-image"
 version = "0.1.0"
-description = ""
-authors = ["equal-l2 <eng.equall2@gmail.com>"]
-readme = "README.md"
-
-[tool.poetry.dependencies]
-python = "~3.11"
-opencv-python = "^4.7.0.72"
-tensorflow="^2.14.0"
-tensorflow-hub = "^0.14.0"
-numba = "^0.58.0"
-
-
-[tool.poetry.group.dev.dependencies]
-line-profiler = "^4.1.1"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires-python = ">=3.12"
+dependencies = [
+    "opencv-python>=4.11.0.86",
+    "tensorflow>=2.19.0",
+    "tensorflow-hub>=0.16.1",
+]
